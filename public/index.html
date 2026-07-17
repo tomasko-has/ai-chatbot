@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Assistant — Brew & Bean</title>
+  <!-- marked: converts markdown (bold, lists) into HTML -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -127,7 +129,6 @@
       border-radius: 16px;
       font-size: 14.5px;
       line-height: 1.55;
-      white-space: pre-wrap;
       word-wrap: break-word;
       animation: msgIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     }
@@ -143,6 +144,7 @@
       align-self: flex-end;
       border-bottom-right-radius: 4px;
       box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25);
+      white-space: pre-wrap;
     }
 
     .bot {
@@ -151,6 +153,20 @@
       align-self: flex-start;
       border: 1px solid var(--border);
       border-bottom-left-radius: 4px;
+    }
+
+    /* markdown formatting inside bot messages */
+    .bot p { margin: 0 0 8px 0; }
+    .bot p:last-child { margin-bottom: 0; }
+    .bot ul, .bot ol { margin: 6px 0 8px 0; padding-left: 20px; }
+    .bot li { margin: 3px 0; }
+    .bot strong { font-weight: 600; color: #fff; }
+    .bot a { color: var(--accent); }
+    .bot code {
+      background: #0a0a0f;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
     }
 
     .welcome {
@@ -271,11 +287,15 @@
     const sendBtn = document.getElementById("send");
     const history = [];
 
-    // creates a message bubble and returns it, so we can keep adding text to it
+    // user messages: plain text (safe). bot messages: rendered markdown.
     function addMessage(text, sender) {
       const div = document.createElement("div");
       div.className = "msg " + sender;
-      div.textContent = text;
+      if (sender === "bot") {
+        div.innerHTML = marked.parse(text);
+      } else {
+        div.textContent = text;
+      }
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
       return div;
@@ -312,26 +332,23 @@
           body: JSON.stringify({ messages: history }),
         });
 
-        // read the streamed response piece by piece
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
-        let botDiv = null;      // the bubble we'll grow as text arrives
-        let fullReply = "";     // the complete reply, for saving into history
-        let buffer = "";        // holds partial data between chunks
+        let botDiv = null;
+        let fullReply = "";
+        let buffer = "";
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-
-          // the stream sends lines like "data: {...}" separated by blank lines
           const lines = buffer.split("\n\n");
-          buffer = lines.pop(); // keep the last, possibly-incomplete part
+          buffer = lines.pop();
 
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue;
-            const data = line.slice(6); // remove "data: "
+            const data = line.slice(6);
 
             if (data === "[DONE]") continue;
 
@@ -344,14 +361,13 @@
             }
 
             if (parsed.text) {
-              // first chunk: remove the typing dots and create the bubble
               if (!botDiv) {
                 removeTyping();
                 botDiv = addMessage("", "bot");
               }
-              // append the new chunk so the bubble grows
               fullReply += parsed.text;
-              botDiv.textContent = fullReply;
+              // re-render markdown as the text grows
+              botDiv.innerHTML = marked.parse(fullReply);
               chat.scrollTop = chat.scrollHeight;
             }
           }

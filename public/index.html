@@ -18,6 +18,7 @@
       --accent: #6366f1;
       --accent-2: #8b5cf6;
       --user-grad: linear-gradient(135deg, #6366f1, #8b5cf6);
+      --danger: #ef4444;
     }
 
     body {
@@ -275,7 +276,21 @@
       display: flex;
       gap: 10px;
       align-items: flex-end;
+      position: relative;
     }
+
+    /* character counter shown when near the limit */
+    .char-count {
+      position: absolute;
+      top: -22px;
+      right: 18px;
+      font-size: 11.5px;
+      color: var(--text-dim);
+      opacity: 0;
+      transition: opacity 0.2s, color 0.2s;
+    }
+    .char-count.show { opacity: 1; }
+    .char-count.over { color: var(--danger); }
 
     #input {
       flex: 1;
@@ -289,13 +304,18 @@
       outline: none;
       resize: none;
       line-height: 1.5;
-      overflow-y: hidden;        /* no scrollbar - the field grows with content */
+      overflow-y: hidden;
       transition: border-color 0.25s, box-shadow 0.25s;
     }
 
     #input:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+    }
+
+    #input.over-limit {
+      border-color: var(--danger);
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
     }
 
     #input::placeholder { color: var(--text-dim); }
@@ -343,6 +363,7 @@
     <div id="chat"></div>
 
     <div class="input-area">
+      <div id="charCount" class="char-count"></div>
       <textarea id="input" rows="1" placeholder="Type a message...  (Shift+Enter for a new line)" autocomplete="off"></textarea>
       <button id="send">Send</button>
     </div>
@@ -353,7 +374,11 @@
     const input = document.getElementById("input");
     const sendBtn = document.getElementById("send");
     const newChatBtn = document.getElementById("newChat");
+    const charCount = document.getElementById("charCount");
     let history = [];
+
+    const MAX_MESSAGE_LENGTH = 2000;   // must match the server limit
+    const COUNTER_SHOW_AT = 1500;      // show counter once we pass this
 
     const WELCOME_TEXT = "Hi there! \uD83D\uDC4B I'm the virtual assistant for Brew & Bean. Ask me about our opening hours, menu, or reservations.";
 
@@ -372,6 +397,7 @@
       chat.innerHTML = "";
       showWelcome();
       resetInputHeight();
+      updateCharCount();
       input.focus();
     }
 
@@ -382,6 +408,23 @@
 
     function resetInputHeight() {
       input.style.height = "auto";
+    }
+
+    // updates the character counter and the over-limit visual state
+    function updateCharCount() {
+      const len = input.value.length;
+      const over = len > MAX_MESSAGE_LENGTH;
+
+      if (len >= COUNTER_SHOW_AT) {
+        charCount.classList.add("show");
+        charCount.textContent = `${len} / ${MAX_MESSAGE_LENGTH}`;
+      } else {
+        charCount.classList.remove("show");
+      }
+
+      charCount.classList.toggle("over", over);
+      input.classList.toggle("over-limit", over);
+      sendBtn.disabled = over;   // block sending while over the limit
     }
 
     function addUserMessage(text) {
@@ -443,12 +486,14 @@
 
     async function sendMessage() {
       const text = input.value.trim();
-      if (!text) return;
+      if (!text) return;                       // no empty messages
+      if (text.length > MAX_MESSAGE_LENGTH) return;  // no over-limit messages
 
       addUserMessage(text);
       history.push({ role: "user", content: text });
       input.value = "";
       resetInputHeight();
+      updateCharCount();
       sendBtn.disabled = true;
       showTyping();
 
@@ -458,6 +503,18 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ messages: history }),
         });
+
+        // if the server rejected the request (e.g. validation, rate limit)
+        if (!res.ok) {
+          removeTyping();
+          let msg = "Sorry, something went wrong. Please try again.";
+          try {
+            const errData = await res.json();
+            if (errData && errData.error) msg = errData.error;
+          } catch (e) {}
+          addSimpleBotMessage(msg);
+          return;
+        }
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -507,7 +564,8 @@
         removeTyping();
         addSimpleBotMessage("Sorry, something went wrong. Please try again.");
       } finally {
-        sendBtn.disabled = false;
+        // re-enable send only if the input isn't over the limit
+        updateCharCount();
         input.focus();
       }
     }
@@ -521,11 +579,15 @@
       }
     });
 
-    input.addEventListener("input", autoGrow);
+    input.addEventListener("input", () => {
+      autoGrow();
+      updateCharCount();
+    });
 
     newChatBtn.addEventListener("click", newConversation);
 
     showWelcome();
+    updateCharCount();
     input.focus();
   </script>
 </body>

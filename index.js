@@ -10,10 +10,14 @@ app.use(express.static("public"));
 // create the client - it automatically reads the key from .env
 const anthropic = new Anthropic();
 
+// limits
+const MAX_MESSAGE_LENGTH = 2000; // max characters per single message
+const MAX_HISTORY = 50;          // max messages kept in one conversation
+
 // rate limiter: max 20 requests per minute per IP
 const chatLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 20,             // limit each IP to 20 requests per window
+  windowMs: 60 * 1000,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many messages. Please wait a moment and try again." },
@@ -22,6 +26,27 @@ const chatLimiter = rateLimit({
 // main chat endpoint - streams Claude's reply back piece by piece
 app.post("/chat", chatLimiter, async (req, res) => {
   const messages = req.body.messages;
+
+  // --- validation ---
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: "No messages provided." });
+  }
+
+  if (messages.length > MAX_HISTORY) {
+    return res.status(400).json({ error: "Conversation is too long. Please start a new chat." });
+  }
+
+  const lastMessage = messages[messages.length - 1];
+  const lastText = (lastMessage && typeof lastMessage.content === "string") ? lastMessage.content.trim() : "";
+
+  if (!lastText) {
+    return res.status(400).json({ error: "Message cannot be empty." });
+  }
+
+  if (lastText.length > MAX_MESSAGE_LENGTH) {
+    return res.status(400).json({ error: `Message is too long (max ${MAX_MESSAGE_LENGTH} characters).` });
+  }
+  // --- end validation ---
 
   // set up the response as a stream (Server-Sent Events style)
   res.setHeader("Content-Type", "text/event-stream");
@@ -45,18 +70,15 @@ Reply concisely and in a friendly tone, in English. If someone asks about someth
       messages: messages,
     });
 
-    // as each piece of text arrives from Claude, send it to the browser
     stream.on("text", (textChunk) => {
       res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
     });
 
-    // when Claude is done, tell the browser and close the stream
     stream.on("end", () => {
       res.write("data: [DONE]\n\n");
       res.end();
     });
 
-    // if something breaks mid-stream
     stream.on("error", (error) => {
       console.error(error);
       res.write(`data: ${JSON.stringify({ error: "Something went wrong" })}\n\n`);

@@ -271,12 +271,14 @@
     const sendBtn = document.getElementById("send");
     const history = [];
 
+    // creates a message bubble and returns it, so we can keep adding text to it
     function addMessage(text, sender) {
       const div = document.createElement("div");
       div.className = "msg " + sender;
       div.textContent = text;
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
+      return div;
     }
 
     function showTyping() {
@@ -309,10 +311,55 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ messages: history }),
         });
-        const data = await res.json();
-        removeTyping();
-        addMessage(data.reply, "bot");
-        history.push({ role: "assistant", content: data.reply });
+
+        // read the streamed response piece by piece
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let botDiv = null;      // the bubble we'll grow as text arrives
+        let fullReply = "";     // the complete reply, for saving into history
+        let buffer = "";        // holds partial data between chunks
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // the stream sends lines like "data: {...}" separated by blank lines
+          const lines = buffer.split("\n\n");
+          buffer = lines.pop(); // keep the last, possibly-incomplete part
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6); // remove "data: "
+
+            if (data === "[DONE]") continue;
+
+            const parsed = JSON.parse(data);
+
+            if (parsed.error) {
+              removeTyping();
+              addMessage("Sorry, something went wrong. Please try again.", "bot");
+              continue;
+            }
+
+            if (parsed.text) {
+              // first chunk: remove the typing dots and create the bubble
+              if (!botDiv) {
+                removeTyping();
+                botDiv = addMessage("", "bot");
+              }
+              // append the new chunk so the bubble grows
+              fullReply += parsed.text;
+              botDiv.textContent = fullReply;
+              chat.scrollTop = chat.scrollHeight;
+            }
+          }
+        }
+
+        if (fullReply) {
+          history.push({ role: "assistant", content: fullReply });
+        }
       } catch (err) {
         removeTyping();
         addMessage("Sorry, something went wrong. Please try again.", "bot");

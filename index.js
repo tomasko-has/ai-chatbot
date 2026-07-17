@@ -1,5 +1,6 @@
 import express from "express";
 import Anthropic from "@anthropic-ai/sdk";
+import rateLimit from "express-rate-limit";
 import "dotenv/config";
 
 const app = express();
@@ -9,8 +10,17 @@ app.use(express.static("public"));
 // create the client - it automatically reads the key from .env
 const anthropic = new Anthropic();
 
+// rate limiter: max 20 requests per minute per IP
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20,             // limit each IP to 20 requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many messages. Please wait a moment and try again." },
+});
+
 // main chat endpoint - streams Claude's reply back piece by piece
-app.post("/chat", async (req, res) => {
+app.post("/chat", chatLimiter, async (req, res) => {
   const messages = req.body.messages;
 
   // set up the response as a stream (Server-Sent Events style)

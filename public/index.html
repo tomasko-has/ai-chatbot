@@ -107,7 +107,6 @@
       50% { opacity: 0.4; }
     }
 
-    /* new conversation button in the header */
     .new-chat-btn {
       background: transparent;
       border: 1px solid var(--border);
@@ -275,6 +274,7 @@
       border-top: 1px solid var(--border);
       display: flex;
       gap: 10px;
+      align-items: flex-end;
     }
 
     #input {
@@ -287,6 +287,9 @@
       font-size: 14.5px;
       font-family: inherit;
       outline: none;
+      resize: none;
+      line-height: 1.5;
+      overflow-y: hidden;        /* no scrollbar - the field grows with content */
       transition: border-color 0.25s, box-shadow 0.25s;
     }
 
@@ -302,11 +305,13 @@
       border: none;
       border-radius: 12px;
       padding: 0 22px;
+      height: 48px;
       color: white;
       font-size: 14.5px;
       font-weight: 600;
       font-family: inherit;
       cursor: pointer;
+      flex-shrink: 0;
       transition: transform 0.15s, box-shadow 0.25s, opacity 0.2s;
       box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
     }
@@ -338,7 +343,7 @@
     <div id="chat"></div>
 
     <div class="input-area">
-      <input id="input" type="text" placeholder="Type a message..." autocomplete="off">
+      <textarea id="input" rows="1" placeholder="Type a message...  (Shift+Enter for a new line)" autocomplete="off"></textarea>
       <button id="send">Send</button>
     </div>
   </div>
@@ -355,7 +360,6 @@
     const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
     const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
 
-    // shows the initial welcome message
     function showWelcome() {
       const div = document.createElement("div");
       div.className = "welcome";
@@ -363,12 +367,21 @@
       chat.appendChild(div);
     }
 
-    // clears everything and starts fresh
     function newConversation() {
       history = [];
       chat.innerHTML = "";
       showWelcome();
+      resetInputHeight();
       input.focus();
+    }
+
+    function autoGrow() {
+      input.style.height = "auto";
+      input.style.height = input.scrollHeight + "px";
+    }
+
+    function resetInputHeight() {
+      input.style.height = "auto";
     }
 
     function addUserMessage(text) {
@@ -435,6 +448,7 @@
       addUserMessage(text);
       history.push({ role: "user", content: text });
       input.value = "";
+      resetInputHeight();
       sendBtn.disabled = true;
       showTyping();
 
@@ -499,12 +513,18 @@
     }
 
     sendBtn.addEventListener("click", sendMessage);
+
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") sendMessage();
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
     });
+
+    input.addEventListener("input", autoGrow);
+
     newChatBtn.addEventListener("click", newConversation);
 
-    // start with the welcome message
     showWelcome();
     input.focus();
   </script>

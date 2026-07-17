@@ -1,5 +1,11 @@
 Brew & Bean — AI Customer Assistant
 
+## Live Demo
+
+**[Try it live →](https://ai-chatbot-vy0m.onrender.com)**
+
+![Chat interface screenshot](docs/chatbot.png)
+
 A production-style AI chatbot for a small business (a coffee shop), built with Node.js and the Anthropic Claude API. It answers customer questions about opening hours, the menu, and reservations through a clean, dark-themed chat interface.
 
 This project demonstrates a complete, reusable pattern for adding an AI assistant to any business website: the same codebase works for a café, a hair salon, or an auto shop — only the assistant's instructions change.

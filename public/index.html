@@ -76,6 +76,8 @@
       box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
     }
 
+    .header-info { flex: 1; }
+
     .header-info h1 {
       font-size: 16px;
       font-weight: 600;
@@ -104,6 +106,31 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.4; }
     }
+
+    /* new conversation button in the header */
+    .new-chat-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 0.2s, border-color 0.2s, background 0.2s;
+      flex-shrink: 0;
+    }
+
+    .new-chat-btn:hover {
+      color: var(--text);
+      border-color: var(--accent);
+      background: rgba(99, 102, 241, 0.12);
+    }
+
+    .new-chat-btn svg { width: 15px; height: 15px; }
 
     #chat {
       flex: 1;
@@ -152,8 +179,8 @@
       align-self: flex-start;
       border: 1px solid var(--border);
       border-bottom-left-radius: 4px;
-      position: relative;   /* so the copy button can sit in the corner */
-      padding-right: 40px;  /* room for the icon so text doesn't run under it */
+      position: relative;
+      padding-right: 40px;
     }
 
     .bot p { margin: 0 0 8px 0; }
@@ -169,7 +196,6 @@
       font-size: 13px;
     }
 
-    /* copy icon in the top-right corner of bot bubbles, shown on hover */
     .copy-btn {
       position: absolute;
       top: 8px;
@@ -183,11 +209,11 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      opacity: 0;                 /* hidden by default */
+      opacity: 0;
       transition: opacity 0.2s, color 0.2s, background 0.2s, border-color 0.2s;
     }
 
-    .bot:hover .copy-btn { opacity: 1; }   /* show on hover */
+    .bot:hover .copy-btn { opacity: 1; }
 
     .copy-btn svg { width: 14px; height: 14px; }
 
@@ -303,11 +329,13 @@
         <h1>Brew &amp; Bean Assistant</h1>
         <div class="status"><span class="status-dot"></span> Online — replies instantly</div>
       </div>
+      <button id="newChat" class="new-chat-btn" title="Start a new conversation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+        New chat
+      </button>
     </div>
 
-    <div id="chat">
-      <div class="welcome">Hi there! &#128075; I'm the virtual assistant for Brew &amp; Bean. Ask me about our opening hours, menu, or reservations.</div>
-    </div>
+    <div id="chat"></div>
 
     <div class="input-area">
       <input id="input" type="text" placeholder="Type a message..." autocomplete="off">
@@ -319,10 +347,29 @@
     const chat = document.getElementById("chat");
     const input = document.getElementById("input");
     const sendBtn = document.getElementById("send");
-    const history = [];
+    const newChatBtn = document.getElementById("newChat");
+    let history = [];
+
+    const WELCOME_TEXT = "Hi there! \uD83D\uDC4B I'm the virtual assistant for Brew & Bean. Ask me about our opening hours, menu, or reservations.";
 
     const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
     const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+    // shows the initial welcome message
+    function showWelcome() {
+      const div = document.createElement("div");
+      div.className = "welcome";
+      div.textContent = WELCOME_TEXT;
+      chat.appendChild(div);
+    }
+
+    // clears everything and starts fresh
+    function newConversation() {
+      history = [];
+      chat.innerHTML = "";
+      showWelcome();
+      input.focus();
+    }
 
     function addUserMessage(text) {
       const div = document.createElement("div");
@@ -332,7 +379,6 @@
       chat.scrollTop = chat.scrollHeight;
     }
 
-    // bot bubble - returns it so we can grow it during streaming
     function addBotBubble() {
       const div = document.createElement("div");
       div.className = "msg bot";
@@ -341,7 +387,6 @@
       return div;
     }
 
-    // adds the copy icon into the corner of a finished bot bubble
     function addCopyButton(bubble, textToCopy) {
       const btn = document.createElement("button");
       btn.className = "copy-btn";
@@ -356,9 +401,7 @@
             btn.innerHTML = COPY_ICON;
             btn.classList.remove("copied");
           }, 1500);
-        } catch (err) {
-          // clipboard failed - leave icon as is
-        }
+        } catch (err) {}
       });
       bubble.appendChild(btn);
     }
@@ -442,7 +485,6 @@
           }
         }
 
-        // reply complete: save it and drop the copy icon into the corner
         if (fullReply) {
           history.push({ role: "assistant", content: fullReply });
           if (bubble) addCopyButton(bubble, fullReply);
@@ -460,6 +502,10 @@
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") sendMessage();
     });
+    newChatBtn.addEventListener("click", newConversation);
+
+    // start with the welcome message
+    showWelcome();
     input.focus();
   </script>
 </body>

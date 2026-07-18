@@ -229,6 +229,26 @@
       opacity: 1;
     }
 
+    /* system notice - visually distinct from bot messages */
+    .system-notice {
+      align-self: center;
+      max-width: 85%;
+      text-align: center;
+      font-size: 13px;
+      color: #f4a8a8;
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      padding: 9px 16px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: center;
+      animation: msgIn 0.3s ease;
+    }
+
+    .system-notice svg { width: 15px; height: 15px; flex-shrink: 0; }
+
     .welcome {
       align-self: flex-start;
       color: var(--text-dim);
@@ -279,7 +299,6 @@
       position: relative;
     }
 
-    /* character counter shown when near the limit */
     .char-count {
       position: absolute;
       top: -22px;
@@ -377,13 +396,14 @@
     const charCount = document.getElementById("charCount");
     let history = [];
 
-    const MAX_MESSAGE_LENGTH = 2000;   // must match the server limit
-    const COUNTER_SHOW_AT = 1500;      // show counter once we pass this
+    const MAX_MESSAGE_LENGTH = 2000;
+    const COUNTER_SHOW_AT = 1500;
 
     const WELCOME_TEXT = "Hi there! \uD83D\uDC4B I'm the virtual assistant for Brew & Bean. Ask me about our opening hours, menu, or reservations.";
 
     const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
     const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+    const WARN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
 
     function showWelcome() {
       const div = document.createElement("div");
@@ -410,7 +430,6 @@
       input.style.height = "auto";
     }
 
-    // updates the character counter and the over-limit visual state
     function updateCharCount() {
       const len = input.value.length;
       const over = len > MAX_MESSAGE_LENGTH;
@@ -424,7 +443,7 @@
 
       charCount.classList.toggle("over", over);
       input.classList.toggle("over-limit", over);
-      sendBtn.disabled = over;   // block sending while over the limit
+      sendBtn.disabled = over;
     }
 
     function addUserMessage(text) {
@@ -441,6 +460,16 @@
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
       return div;
+    }
+
+    // system notice - for errors, rate limits, connection issues (not a bot reply)
+    function addSystemNotice(text) {
+      const div = document.createElement("div");
+      div.className = "system-notice";
+      div.innerHTML = WARN_ICON + "<span></span>";
+      div.querySelector("span").textContent = text;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
     }
 
     function addCopyButton(bubble, textToCopy) {
@@ -462,14 +491,6 @@
       bubble.appendChild(btn);
     }
 
-    function addSimpleBotMessage(text) {
-      const div = document.createElement("div");
-      div.className = "msg bot";
-      div.textContent = text;
-      chat.appendChild(div);
-      chat.scrollTop = chat.scrollHeight;
-    }
-
     function showTyping() {
       const t = document.createElement("div");
       t.className = "typing";
@@ -486,8 +507,8 @@
 
     async function sendMessage() {
       const text = input.value.trim();
-      if (!text) return;                       // no empty messages
-      if (text.length > MAX_MESSAGE_LENGTH) return;  // no over-limit messages
+      if (!text) return;
+      if (text.length > MAX_MESSAGE_LENGTH) return;
 
       addUserMessage(text);
       history.push({ role: "user", content: text });
@@ -504,15 +525,17 @@
           body: JSON.stringify({ messages: history }),
         });
 
-        // if the server rejected the request (e.g. validation, rate limit)
+        // server rejected the request (validation, rate limit, etc.)
         if (!res.ok) {
           removeTyping();
-          let msg = "Sorry, something went wrong. Please try again.";
+          let msg = "Something went wrong. Please try again.";
           try {
             const errData = await res.json();
             if (errData && errData.error) msg = errData.error;
           } catch (e) {}
-          addSimpleBotMessage(msg);
+          addSystemNotice(msg);
+          // remove the user message from history since it wasn't answered
+          history.pop();
           return;
         }
 
@@ -540,7 +563,7 @@
 
             if (parsed.error) {
               removeTyping();
-              addSimpleBotMessage("Sorry, something went wrong. Please try again.");
+              addSystemNotice("The assistant ran into a problem. Please try again.");
               continue;
             }
 
@@ -561,10 +584,11 @@
           if (bubble) addCopyButton(bubble, fullReply);
         }
       } catch (err) {
+        // network / connection problem (server asleep, no internet, etc.)
         removeTyping();
-        addSimpleBotMessage("Sorry, something went wrong. Please try again.");
+        addSystemNotice("Connection issue. Please check your internet and try again.");
+        history.pop();
       } finally {
-        // re-enable send only if the input isn't over the limit
         updateCharCount();
         input.focus();
       }

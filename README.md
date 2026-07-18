@@ -8,7 +8,7 @@ This project demonstrates a complete, reusable pattern for adding an AI assistan
 
 **[Try it live →](https://ai-chatbot-vy0m.onrender.com)**
 
-![Chat interface screenshot](docs/preview.png)
+![Chat interface screenshot](docs/preview.webp)
 
 > _Note: the live demo runs on a free instance that sleeps after inactivity, so the first request may take up to ~50 seconds to wake it._
 

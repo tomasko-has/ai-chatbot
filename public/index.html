@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Assistant — Brew & Bean</title>
+  <title>AI Assistant — Multi-Business Demo</title>
   <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -53,6 +53,44 @@
     @keyframes containerIn {
       from { opacity: 0; transform: translateY(20px) scale(0.98); }
       to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* business switcher bar above the header */
+    .switcher {
+      display: flex;
+      gap: 8px;
+      padding: 12px 22px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+    }
+
+    .switcher-btn {
+      background: var(--panel-light);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+      transition: color 0.2s, border-color 0.2s, background 0.2s;
+    }
+
+    .switcher-btn:hover {
+      color: var(--text);
+      border-color: var(--accent);
+    }
+
+    .switcher-btn.active {
+      color: #fff;
+      border-color: transparent;
+      background: var(--user-grad);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
     }
 
     .header {
@@ -229,7 +267,6 @@
       opacity: 1;
     }
 
-    /* system notice - visually distinct from bot messages */
     .system-notice {
       align-self: center;
       max-width: 85%;
@@ -367,10 +404,12 @@
 </head>
 <body>
   <div class="container">
+    <div id="switcher" class="switcher"></div>
+
     <div class="header">
-      <div class="avatar">&#9749;</div>
+      <div id="avatar" class="avatar">&#9749;</div>
       <div class="header-info">
-        <h1>Brew &amp; Bean Assistant</h1>
+        <h1 id="bizName">Assistant</h1>
         <div class="status"><span class="status-dot"></span> Online — replies instantly</div>
       </div>
       <button id="newChat" class="new-chat-btn" title="Start a new conversation">
@@ -394,21 +433,66 @@
     const sendBtn = document.getElementById("send");
     const newChatBtn = document.getElementById("newChat");
     const charCount = document.getElementById("charCount");
+    const switcher = document.getElementById("switcher");
+    const bizNameEl = document.getElementById("bizName");
+    const avatarEl = document.getElementById("avatar");
+
     let history = [];
+    let allBusinesses = [];      // list loaded from the server
+    let currentBusiness = null;  // the active business object
 
     const MAX_MESSAGE_LENGTH = 2000;
     const COUNTER_SHOW_AT = 1500;
-
-    const WELCOME_TEXT = "Hi there! \uD83D\uDC4B I'm the virtual assistant for Brew & Bean. Ask me about our opening hours, menu, or reservations.";
 
     const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
     const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
     const WARN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
 
+    // load the businesses from the server, build the switcher, select the default
+    async function loadBusinesses() {
+      try {
+        const res = await fetch("/businesses");
+        const data = await res.json();
+        allBusinesses = data.businesses;
+
+        switcher.innerHTML = "";
+        allBusinesses.forEach((b) => {
+          const btn = document.createElement("button");
+          btn.className = "switcher-btn";
+          btn.dataset.id = b.id;
+          btn.innerHTML = `<span>${b.emoji}</span> ${b.name}`;
+          btn.addEventListener("click", () => selectBusiness(b.id));
+          switcher.appendChild(btn);
+        });
+
+        const defaultId = data.default || (allBusinesses[0] && allBusinesses[0].id);
+        selectBusiness(defaultId);
+      } catch (err) {
+        addSystemNotice("Could not load businesses. Please refresh the page.");
+      }
+    }
+
+    // switch to a business: update header, highlight button, reset conversation
+    function selectBusiness(id) {
+      const biz = allBusinesses.find((b) => b.id === id);
+      if (!biz) return;
+      currentBusiness = biz;
+
+      bizNameEl.textContent = biz.name;
+      avatarEl.textContent = biz.emoji;
+
+      // highlight the active switcher button
+      switcher.querySelectorAll(".switcher-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.id === id);
+      });
+
+      newConversation();
+    }
+
     function showWelcome() {
       const div = document.createElement("div");
       div.className = "welcome";
-      div.textContent = WELCOME_TEXT;
+      div.textContent = currentBusiness ? currentBusiness.welcome : "Hi!";
       chat.appendChild(div);
     }
 
@@ -462,7 +546,6 @@
       return div;
     }
 
-    // system notice - for errors, rate limits, connection issues (not a bot reply)
     function addSystemNotice(text) {
       const div = document.createElement("div");
       div.className = "system-notice";
@@ -522,10 +605,12 @@
         const res = await fetch("/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: history }),
+          body: JSON.stringify({
+            messages: history,
+            businessId: currentBusiness ? currentBusiness.id : undefined,
+          }),
         });
 
-        // server rejected the request (validation, rate limit, etc.)
         if (!res.ok) {
           removeTyping();
           let msg = "Something went wrong. Please try again.";
@@ -534,7 +619,6 @@
             if (errData && errData.error) msg = errData.error;
           } catch (e) {}
           addSystemNotice(msg);
-          // remove the user message from history since it wasn't answered
           history.pop();
           return;
         }
@@ -584,7 +668,6 @@
           if (bubble) addCopyButton(bubble, fullReply);
         }
       } catch (err) {
-        // network / connection problem (server asleep, no internet, etc.)
         removeTyping();
         addSystemNotice("Connection issue. Please check your internet and try again.");
         history.pop();
@@ -610,8 +693,8 @@
 
     newChatBtn.addEventListener("click", newConversation);
 
-    showWelcome();
-    updateCharCount();
+    // start: load businesses and set everything up
+    loadBusinesses();
     input.focus();
   </script>
 </body>

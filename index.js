@@ -2,6 +2,7 @@ import express from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import rateLimit from "express-rate-limit";
 import "dotenv/config";
+import { businesses, DEFAULT_BUSINESS } from "./businesses.js";
 
 const app = express();
 app.use(express.json());
@@ -10,11 +11,9 @@ app.use(express.static("public"));
 // create the client - it automatically reads the key from .env
 const anthropic = new Anthropic();
 
-// limits
-const MAX_MESSAGE_LENGTH = 2000; // max characters per single message
-const MAX_HISTORY = 50;          // max messages kept in one conversation
+const MAX_MESSAGE_LENGTH = 2000;
+const MAX_HISTORY = 50;
 
-// rate limiter: max 20 requests per minute per IP
 const chatLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
@@ -23,32 +22,42 @@ const chatLimiter = rateLimit({
   message: { error: "Too many messages. Please wait a moment and try again." },
 });
 
+// lets the frontend fetch the list of businesses (id, name, emoji, welcome)
+app.get("/businesses", (req, res) => {
+  const list = Object.values(businesses).map((b) => ({
+    id: b.id,
+    name: b.name,
+    emoji: b.emoji,
+    welcome: b.welcome,
+  }));
+  res.json({ businesses: list, default: DEFAULT_BUSINESS });
+});
+
 // main chat endpoint - streams Claude's reply back piece by piece
 app.post("/chat", chatLimiter, async (req, res) => {
   const messages = req.body.messages;
+  const businessId = req.body.businessId;
+
+  // pick the business personality (fallback to default if invalid)
+  const business = businesses[businessId] || businesses[DEFAULT_BUSINESS];
 
   // --- validation ---
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: "No messages provided." });
   }
-
   if (messages.length > MAX_HISTORY) {
     return res.status(400).json({ error: "Conversation is too long. Please start a new chat." });
   }
-
   const lastMessage = messages[messages.length - 1];
   const lastText = (lastMessage && typeof lastMessage.content === "string") ? lastMessage.content.trim() : "";
-
   if (!lastText) {
     return res.status(400).json({ error: "Message cannot be empty." });
   }
-
   if (lastText.length > MAX_MESSAGE_LENGTH) {
     return res.status(400).json({ error: `Message is too long (max ${MAX_MESSAGE_LENGTH} characters).` });
   }
   // --- end validation ---
 
-  // set up the response as a stream (Server-Sent Events style)
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -57,16 +66,7 @@ app.post("/chat", chatLimiter, async (req, res) => {
     const stream = await anthropic.messages.stream({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
-      system: `You are a friendly assistant for "Brew & Bean", a coffee shop.
-You help customers with questions about the menu, opening hours, and reservations.
-
-Coffee shop information:
-- Opening hours: Monday–Friday 7:00 AM–7:00 PM, Saturday 8:00 AM–6:00 PM, Sunday closed.
-- We serve espresso drinks, filter coffee, teas, homemade pastries, and breakfast.
-- Free Wi-Fi, a space well suited for working.
-- Reservations: by phone at (555) 123-4567.
-
-Reply concisely and in a friendly tone, in English. If someone asks about something you don't know, admit it and suggest calling the coffee shop.`,
+      system: business.systemPrompt,   // personality comes from the chosen business
       messages: messages,
     });
 
